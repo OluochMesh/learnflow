@@ -1,0 +1,1 @@
+# Initialize Flask extensions (DB, Login)

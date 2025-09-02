@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">Your Learning Progress</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Entries Per Day</h2>
+            <div id="lineChartContainer">
+                <canvas id="lineChart" width="400" height="200"></canvas>
+            </div>
+            <div id="lineChartError" class="hidden text-red-600 text-sm mt-2"></div>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-sm">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Understanding Level</h2>
+            <div id="pieChartContainer">
+                <canvas id="pieChart" width="400" height="200"></canvas>
+            </div>
+            <div id="pieChartError" class="hidden text-red-600 text-sm mt-2"></div>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-sm">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Progress Insights</h2>
+        <div id="progress-insights" class="text-gray-600">
+            {% if not line_data or not pie_data %}
+                <p class="text-gray-500">Start analyzing your learning to see insights here!</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Safely parse the chart data passed from the backend
+    let lineData = { labels: [], data: [] };
+    let pieData = { labels: [], data: [], colors: [] };
+    
+    try {
+        {% if line_data %}
+        lineData = JSON.parse('{{ line_data|safe }}');
+        {% endif %}
+    } catch (error) {
+        console.error('Error parsing line chart data:', error);
+        document.getElementById('lineChartError').textContent = 'Error loading line chart data';
+        document.getElementById('lineChartError').classList.remove('hidden');
+    }
+    
+    try {
+        {% if pie_data %}
+        pieData = JSON.parse('{{ pie_data|safe }}');
+        {% endif %}
+    } catch (error) {
+        console.error('Error parsing pie chart data:', error);
+        document.getElementById('pieChartError').textContent = 'Error loading pie chart data';
+        document.getElementById('pieChartError').classList.remove('hidden');
+    }
+
+    // Create charts only if we have data
+    if (lineData && lineData.labels && lineData.labels.length > 0) {
+        createLineChart(lineData);
+    } else {
+        document.getElementById('lineChartError').textContent = 'No data available for line chart';
+        document.getElementById('lineChartError').classList.remove('hidden');
+    }
+    
+    if (pieData && pieData.labels && pieData.labels.length > 0 && pieData.data && pieData.data.some(val => val > 0)) {
+        createPieChart(pieData);
+    } else {
+        document.getElementById('pieChartError').textContent = 'No data available for pie chart';
+        document.getElementById('pieChartError').classList.remove('hidden');
+    }
+    
+    // Generate insights
+    generateInsights(lineData, pieData);
+});
+
+function createLineChart(lineData) {
+    try {
+        const lineCtx = document.getElementById('lineChart').getContext('2d');
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: lineData.labels,
+                datasets: [{
+                    label: 'Entries per Day',
+                    data: lineData.data,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Your Learning Consistency'
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error creating line chart:', error);
+        document.getElementById('lineChartError').textContent = 'Failed to create line chart';
+        document.getElementById('lineChartError').classList.remove('hidden');
+    }
+}
+
+function createPieChart(pieData) {
+    try {
+        const pieCtx = document.getElementById('pieChart').getContext('2d');
+        new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: pieData.labels || ['SOLID', 'PARTIAL', 'NEEDS_REVIEW'],
+                datasets: [{
+                    data: pieData.data,
+                    backgroundColor: pieData.colors || ['#10B981', '#F59E0B', '#EF4444']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Understanding Distribution'
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error creating pie chart:', error);
+        document.getElementById('pieChartError').textContent = 'Failed to create pie chart';
+        document.getElementById('pieChartError').classList.remove('hidden');
+    }
+}
+
+function generateInsights(lineData, pieData) {
+    const insightsDiv = document.getElementById('progress-insights');
+    let insights = [];
+    
+    // Calculate total entries - safely
+    const totalEntries = pieData && pieData.data ? pieData.data.reduce((sum, count) => sum + count, 0) : 0;
+    
+    if (totalEntries === 0) {
+        insights.push('<p class="text-gray-500">Start analyzing your learning to see insights here! Analyze at least one concept to view your progress.</p>');
+        insightsDiv.innerHTML = insights.join('');
+        return;
+    }
+    
+    // Insight 1: Consistency (only if we have line data)
+    if (lineData && lineData.labels && lineData.labels.length > 0) {
+        const activeDays = lineData.data.filter(count => count > 0).length;
+        const totalDays = lineData.labels.length;
+        const consistencyPercent = totalDays > 0 ? Math.round((activeDays / totalDays) * 100) : 0;
+        
+        if (consistencyPercent > 70) {
+            insights.push('<p class="text-green-600">🎯 Excellent consistency! You\'re learning on ' + consistencyPercent + '% of days.</p>');
+        } else if (consistencyPercent > 40) {
+            insights.push('<p class="text-yellow-600">📊 Good consistency at ' + consistencyPercent + '%. Try to learn a little every day!</p>');
+        } else {
+            insights.push('<p class="text-red-600">📈 You\'re learning on ' + consistencyPercent + '% of days. Try to be more consistent!</p>');
+        }
+    }
+    
+    // Insight 2: Understanding level
+    if (pieData && pieData.data && pieData.data.length >= 3) {
+        const solidPercent = Math.round((pieData.data[0] / totalEntries) * 100);
+        const needsReviewPercent = Math.round((pieData.data[2] / totalEntries) * 100);
+        
+        insights.push('<p class="text-gray-600">🧠 <strong>' + solidPercent + '%</strong> of concepts are well understood (SOLID).</p>');
+        
+        if (needsReviewPercent > 30) {
+            insights.push('<p class="text-red-600">⚠️ <strong>' + needsReviewPercent + '%</strong> need review. Focus on these areas!</p>');
+        }
+    }
+    
+    // Insight 3: Encouragement based on total
+    if (totalEntries < 5) {
+        insights.push('<p class="text-blue-600">🚀 Keep going! Regular practice builds strong understanding.</p>');
+    } else if (totalEntries < 20) {
+        insights.push('<p class="text-green-600">🌟 Great start! You\'re building a solid learning habit.</p>');
+    } else {
+        insights.push('<p class="text-purple-600">🔥 Amazing commitment! You\'re on your way to mastery.</p>');
+    }
+    
+    insightsDiv.innerHTML = insights.join('');
+}
+</script>
+{% endblock %}

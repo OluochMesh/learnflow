@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">Learning Dashboard</h1>
+
+    <!-- Usage Stats -->
+    <div class="bg-white p-6 rounded-lg shadow-sm mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+            <div>
+                <p class="text-sm text-gray-600">This Week's Entries</p>
+                <p id="weekly-count" class="text-2xl font-bold text-blue-600">0</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Total Entries</p>
+                <p id="total-count" class="text-2xl font-bold text-green-600">0</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">Plan</p>
+                <p id="plan-status" class="text-2xl font-bold">
+                    <span class="{% if user.subscription_status == 'pro' %}text-purple-600{% else %}text-yellow-600{% endif %}">
+                        {{ user.subscription_status|upper }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Form -->
+    <div class="bg-white p-6 rounded-lg shadow-sm mb-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">What did you learn today?</h2>
+        <form id="analysis-form">
+            <textarea 
+                id="learning-input" 
+                rows="6" 
+                placeholder="Explain a concept you've learned in your own words..." 
+                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+            ></textarea>
+            
+            <div class="mt-4 flex justify-between items-center">
+                <div id="limit-message" class="text-sm text-red-600 hidden">
+                    ❌ You've reached your free limit this week. <a href="{{ url_for('main.profile') }}" class="underline">Upgrade to Pro</a> for unlimited access.
+                </div>
+                <button 
+                    type="submit" 
+                    id="analyze-btn"
+                    class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                    Analyze My Understanding
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- AI Response Area -->
+    <div id="ai-response" class="hidden bg-white p-6 rounded-lg shadow-sm mb-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">AI Feedback</h2>
+        <div id="response-content"></div>
+    </div>
+
+    <!-- Session History -->
+    <div class="bg-white p-6 rounded-lg shadow-sm">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Recent Sessions</h2>
+        
+        {% if sessions %}
+            <div class="space-y-4">
+                {% for session in sessions %}
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <p class="text-sm text-gray-500">{{ session.created_at.strftime('%b %d, %Y %H:%M') }}</p>
+                        <span class="px-2 py-1 text-xs rounded-full 
+                            {% if session.confidence_score == 'SOLID' %}bg-green-100 text-green-800
+                            {% elif session.confidence_score == 'PARTIAL' %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ session.confidence_score or 'PENDING' }}
+                        </span>
+                    </div>
+                    
+                    <p class="text-gray-700 mb-3"><strong>You wrote:</strong> {{ session.input_text[:100] }}{% if session.input_text|length > 100 %}...{% endif %}</p>
+                    
+                    {% if session.ai_feedback %}
+                    <div class="bg-gray-50 p-3 rounded">
+                        <p class="text-sm text-gray-600"><strong>AI Feedback:</strong></p>
+                        <p class="text-sm text-gray-800">{{ session.ai_feedback.corrections or 'No corrections needed' }}</p>
+                        {% if session.ai_feedback.gaps %}
+                        <p class="text-sm text-gray-800 mt-2"><strong>Key gaps:</strong> {{ session.ai_feedback.gaps }}</p>
+                        {% endif %}
+                        {% if session.ai_feedback.question %}
+                        <p class="text-sm text-gray-800 mt-2"><strong>Think about:</strong> {{ session.ai_feedback.question }}</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-gray-500 text-center py-8">No learning sessions yet. Start by analyzing your first concept above!</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('analysis-form');
+    const input = document.getElementById('learning-input');
+    const button = document.getElementById('analyze-btn');
+    const responseDiv = document.getElementById('ai-response');
+    const responseContent = document.getElementById('response-content');
+    const limitMessage = document.getElementById('limit-message');
+
+    // Fetch usage stats
+    fetch('/api/usage')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('weekly-count').textContent = data.weekly_sessions;
+            document.getElementById('total-count').textContent = data.total_sessions;
+            
+            if (data.limit_reached) {
+                button.disabled = true;
+                limitMessage.classList.remove('hidden');
+            }
+        });
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        button.disabled = true;
+        button.textContent = 'Analyzing...';
+        
+        try {
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: input.value
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Display AI response
+                let html = `
+                    <div class="mb-4">
+                        <h3 class="font-semibold text-gray-800">Assessment: 
+                            <span class="px-2 py-1 text-sm rounded-full 
+                                ${data.confidenceScore === 'SOLID' ? 'bg-green-100 text-green-800' : 
+                                  data.confidenceScore === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' : 
+                                  'bg-red-100 text-red-800'}">
+                                ${data.confidenceScore}
+                            </span>
+                        </h3>
+                    </div>
+                `;
+                
+                if (data.corrections) {
+                    html += `<div class="mb-4"><strong>Corrections:</strong><p class="text-gray-700">${data.corrections}</p></div>`;
+                }
+                
+                if (data.gaps) {
+                    html += `<div class="mb-4"><strong>Key gaps to focus on:</strong><p class="text-gray-700">${data.gaps}</p></div>`;
+                }
+                
+                if (data.question) {
+                    html += `<div class="mb-4"><strong>Think deeper:</strong><p class="text-gray-700">${data.question}</p></div>`;
+                }
+                
+                responseContent.innerHTML = html;
+                responseDiv.classList.remove('hidden');
+                
+                // Clear input and reload page after 2 seconds to show new session
+                input.value = '';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+                
+            } else {
+                alert('Error: ' + data.error);
+            }
+            
+        } catch (error) {
+            alert('Failed to analyze. Please try again.');
+            console.error('Error:', error);
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Analyze My Understanding';
+        }
+    });
+});
+</script>
+{% endblock %}
