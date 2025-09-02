@@ -1,10 +1,13 @@
 **📋 Project Overview**
+
 This is a Learning Progress Tracker web application built with HTML, JavaScript, and what appears to be a Python backend (based on the template syntax). The application helps users track their learning progress through visual charts and insights.
 
 **🚧 Current Status - INCOMPLETE**
+
 This project is currently unfinished and contains several issues that need to be resolved before it can function properly.
 
 **❌ Known Issues**
+
 JavaScript Errors
 The application currently has multiple JavaScript syntax errors that prevent it from working correctly:
 
@@ -65,7 +68,7 @@ Ensure Chart.js is properly included
 
 Verify chart data format matches expected structure
 
-🎯 Planned Features
+**🎯 Planned Features**
 Based on the code, the application is designed to include:
 
 Line chart showing learning entries per day
